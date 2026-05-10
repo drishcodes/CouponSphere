@@ -5,7 +5,7 @@ services:
     runtime: static
     rootDir: client
     buildCommand: npm install && npm run build
-    publishDir: dist
+    staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
         value: https://couponsphere-api.onrender.com/api/v1
@@ -30,6 +30,3 @@ services:
         value: https://couponsphere-client.onrender.com
       - key: SEED_DEMO_DATA
         value: "true"
-
-# Note: Managed Redis and Docker services were removed to stay within Render's Card-Free tier.
-# The app will use its internal fallback logic for fraud scoring and caching.
