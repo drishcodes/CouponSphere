@@ -1,8 +1,7 @@
 services:
   # 1. Frontend (Static Site)
-  - type: web
+  - type: static
     name: couponsphere-client
-    runtime: static
     rootDir: client
     buildCommand: npm install && npm run build
     publishDir: dist
@@ -23,7 +22,10 @@ services:
       - key: MONGO_URI
         sync: false
       - key: REDIS_URL
-        fromValue: ${REDIS_URL}
+        fromService:
+          type: keyvalue
+          name: couponsphere-redis
+          property: connectionString
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -42,8 +44,8 @@ services:
       - key: SERVER_PORT
         value: 8080
 
-# 4. Managed Redis
-redis:
-  - name: couponsphere-redis
-    plan: free # Change to starter if needed
-    ipAllowList: [] # Allow all internal traffic
+  # 4. Managed Redis (Key-Value)
+  - type: keyvalue
+    name: couponsphere-redis
+    plan: free
+    ipAllowList: []
