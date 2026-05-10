@@ -1,0 +1,9 @@
+target
+*.jar
+.git
+.gitignore
+Dockerfile
+.dockerignore
+.mvn
+mvnw
+mvnw.cmd

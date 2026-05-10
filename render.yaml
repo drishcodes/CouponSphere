@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: couponsphere-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: FRAUD_SERVICE_URL
+        fromService:
+          type: web
+          name: couponsphere-fraud
+          property: hostport
+  - type: web
+    name: couponsphere-fraud
+    runtime: docker
+    rootDir: fraud-microservice
+
