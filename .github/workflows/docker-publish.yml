@@ -7,6 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # Image name must be lowercase for GHCR/Docker
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -36,7 +37,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/couponsphere-${{ matrix.service }}
+
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
