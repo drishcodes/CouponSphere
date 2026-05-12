@@ -1,0 +1,10 @@
+FROM jenkins/jenkins:lts
+USER root
+
+# Install Node.js, npm, Maven, and Docker CLI
+RUN apt-get update && \
+    apt-get install -y nodejs npm maven docker.io && \
+    apt-get clean
+
+# Install Jenkins plugins
+RUN jenkins-plugin-cli --plugins "workflow-aggregator docker-workflow ws-cleanup git junit"

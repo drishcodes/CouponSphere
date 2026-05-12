@@ -1,6 +1,8 @@
 services:
   jenkins:
-    image: jenkins/jenkins:lts
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
     container_name: couponsphere-jenkins
     restart: unless-stopped
     ports:
@@ -9,6 +11,7 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/project-repo
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
     user: root # Needed to access docker socket
@@ -20,4 +23,5 @@ volumes:
 
 networks:
   couponsphere-network:
+    name: create-a-full-stack-industry-grade_couponsphere-network
     external: true

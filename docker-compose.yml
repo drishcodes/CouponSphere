@@ -59,7 +59,7 @@ services:
       SPRING_PROFILES_ACTIVE: production
       SERVER_PORT: 8080
     ports:
-      - "8080:8080"
+      - "8082:8080"
     networks:
       - couponsphere-network
 
@@ -69,6 +69,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:5005/api/v1}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:5005}
     container_name: couponsphere-client
     restart: unless-stopped
     ports:

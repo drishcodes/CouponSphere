@@ -5,7 +5,7 @@ export function useRealtime() {
   const [events, setEvents] = useState([]);
 
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:5000', { withCredentials: true });
+    const socket = io(import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:5005', { withCredentials: true });
     const push = (type) => (payload) => setEvents((items) => [{ type, payload, at: new Date().toISOString() }, ...items].slice(0, 8));
     socket.on('coupon:created', push('Coupon created'));
     socket.on('coupon:claimed', push('Coupon claimed'));
