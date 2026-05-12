@@ -35,7 +35,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Res
 import { couponCards, chartData, fraudAlerts, regions, stats } from './lib/mockData.js';
 import { setActiveView, toggleTheme } from './store/store.js';
 import { useRealtime } from './hooks/useRealtime.js';
-import { checkBackend, generateBackendCoupon, runBackendFraudCheck, fetchBackendCoupons, claimBackendCoupon, loginUser, registerUser, logoutUser, fetchAnalytics, fetchMarketplaceListings, listCouponForSale, buyMarketplaceCoupon, fetchEarnings, fetchMyCoupons, deleteBackendCoupon, fetchUsers, fetchCustomerEarnings, exportAdminReport } from './lib/backendDemo.js';
+import { checkBackend, generateBackendCoupon, runBackendFraudCheck, fetchBackendCoupons, claimBackendCoupon, loginUser, registerUser, logoutUser, fetchAnalytics, fetchMarketplaceListings, listCouponForSale, buyMarketplaceCoupon, fetchEarnings, fetchMyCoupons, deleteBackendCoupon, fetchUsers, fetchCustomerEarnings, exportAdminReport, fetchMe, redeemBackendCoupon } from './lib/backendDemo.js';
 
 const nav = [
   ['overview', LayoutDashboard, 'Overview'],
@@ -64,6 +64,8 @@ export default function App() {
   const [marketplaceListings, setMarketplaceListings] = useState([]);
   const [earnings, setEarnings] = useState({ total: 0, transactions: [] });
   const [myInventory, setMyInventory] = useState([]);
+  const [userProfile, setUserProfile] = useState(null);
+
 
   const actions = useMemo(() => ({
     notify(message) {
@@ -134,6 +136,20 @@ export default function App() {
         }
       } else {
         this.notify(`${coupon.code} claimed. Fraud score: ${coupon.risk}/100. (Mock)`);
+      }
+    },
+    async redeemCoupon(couponId) {
+      try {
+        await redeemBackendCoupon(couponId);
+        this.notify('Coupon redeemed successfully! Discount applied to order.');
+        await Promise.all([
+          this.fetchInventory(),
+          this.fetchCoupons(),
+          this.fetchMe()
+        ]);
+      } catch (error) {
+        console.error('Redemption error:', error);
+        this.notify(`Redemption failed: ${error.response?.data?.message || 'Server error'}`);
       }
     },
     async deleteCoupon(couponId) {
@@ -261,6 +277,7 @@ export default function App() {
         this.notify('Coupon purchased and added to your inventory!');
         this.fetchMarketplace();
         this.fetchCoupons();
+        this.fetchMe();
       } catch (e) {
         this.notify(e.response?.data?.message || 'Purchase failed.');
       }
@@ -269,12 +286,30 @@ export default function App() {
       dispatch(setActiveView(view));
       if (message) this.notify(message);
       document.getElementById('workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    async fetchMe() {
+      try {
+        const data = await fetchMe();
+        setUserProfile(data);
+      } catch (e) {}
     }
   }), [dispatch, role]);
 
   useEffect(() => {
-    if (role) actions.fetchCoupons();
-  }, [role]); // Only refetch when role changes (login/logout)
+    if (role) {
+      actions.fetchCoupons();
+      // Fetch user profile to get latest loyalty points
+      const fetchProfile = async () => {
+        try {
+          const data = await fetchMe();
+          setUserProfile(data);
+        } catch (e) {}
+      };
+      fetchProfile();
+    }
+  }, [role, actions]);
+
+
 
   const sourceCoupons = liveCoupons.length ? liveCoupons : couponCards;
   const displayCoupons = sourceCoupons.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()) || c.code.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -312,6 +347,7 @@ export default function App() {
     );
   }
 
+
   const handleLogout = async () => {
     try {
       await logoutUser();
@@ -332,6 +368,7 @@ export default function App() {
           marketplaceListings={marketplaceListings}
           earnings={earnings}
           myInventory={myInventory}
+          user={userProfile}
         />
         <Toast message={toast} />
         <DemoModal modal={modal} actions={actions} />
@@ -689,7 +726,10 @@ function Generator({ actions }) {
     value: 20, 
     vendor: '',
     startsAt: new Date().toISOString().split('T')[0],
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    minLoyaltyPoints: 0,
+    minPastRedemptions: 0,
+    accountAgeDays: 0
   });
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -731,6 +771,24 @@ function Generator({ actions }) {
           <span className="text-sm font-medium">Discount Value ({formData.type === 'percentage' ? '%' : '$'})</span>
           <input name="value" type="number" value={formData.value} onChange={handleChange} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 outline-none focus:border-brand dark:border-slate-800 dark:bg-slate-950" placeholder="e.g. 20" />
         </label>
+        <div className="lg:col-span-2 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <h4 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-4">Customer Prerequisites (Eligibility)</h4>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <label className="space-y-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Min Loyalty Points</span>
+              <input name="minLoyaltyPoints" type="number" value={formData.minLoyaltyPoints} onChange={handleChange} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand dark:border-slate-800 dark:bg-slate-950" />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Min Past Redemptions</span>
+              <input name="minPastRedemptions" type="number" value={formData.minPastRedemptions} onChange={handleChange} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand dark:border-slate-800 dark:bg-slate-950" />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-semibold text-slate-500 uppercase">Min Account Age (Days)</span>
+              <input name="accountAgeDays" type="number" value={formData.accountAgeDays} onChange={handleChange} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand dark:border-slate-800 dark:bg-slate-950" />
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-slate-400">If set, customers must meet these criteria to see or claim this coupon.</p>
+        </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
         <button onClick={() => actions.generateBackendCoupon(formData)} className="rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white dark:bg-white dark:text-slate-950">Generate Coupon</button>
@@ -1031,7 +1089,7 @@ function LoginScreen({ onLogin, onRegister }) {
   );
 }
 
-function UserDashboard({ coupons, actions, onLogout, theme, dispatch, marketplaceListings, earnings, myInventory }) {
+function UserDashboard({ coupons, actions, onLogout, theme, dispatch, marketplaceListings, earnings, myInventory, user }) {
   const [activeSubView, setActiveSubView] = useState('browsing');
   const [filter, setFilter] = useState('All');
   
@@ -1048,10 +1106,18 @@ function UserDashboard({ coupons, actions, onLogout, theme, dispatch, marketplac
       <header className="sticky top-0 z-10 glass border-b border-slate-200 dark:border-slate-800">
         <div className="mx-auto max-w-5xl flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
-            <BadgeDollarSign className="text-brand" />
-            <span className="font-bold text-lg">UrbanBite Deals</span>
+            <BadgeDollarSign className="text-brand" size={24} />
+            <span className="font-bold text-xl tracking-tight">CouponSphere</span>
           </div>
           <div className="flex items-center gap-3">
+            <div className="flex flex-col items-end mr-2">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-none">Logged in as</span>
+              <span className="text-sm font-extrabold text-slate-900 dark:text-white">Hi, {user?.name || 'Customer'}</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 bg-brand/10 px-3 py-1.5 rounded-xl border border-brand/20 mr-4">
+              <Sparkles size={14} className="text-brand" />
+              <span className="text-xs font-black text-brand uppercase tracking-tighter">{user?.loyaltyPoints || 0} LP</span>
+            </div>
             <nav className="hidden md:flex items-center gap-6 mr-6 border-r border-slate-200 dark:border-slate-800 pr-6">
               {[
                 ['browsing', 'Store'],
@@ -1159,7 +1225,12 @@ function UserDashboard({ coupons, actions, onLogout, theme, dispatch, marketplac
                       const price = prompt('Enter sale price ($):', '5');
                       if (price) actions.listForSale(redemption._id, parseFloat(price));
                     }} className="w-full rounded-xl bg-brand/10 py-3 text-sm font-bold text-brand hover:bg-brand hover:text-white transition">Sell in Marketplace</button>
-                    <button className="w-full rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 dark:bg-slate-900 dark:text-slate-400">Use Now</button>
+                    <button 
+                      onClick={() => actions.redeemCoupon(redemption.couponId?._id || redemption.couponId)} 
+                      className="w-full rounded-xl bg-slate-100 py-3 text-sm font-bold text-slate-600 dark:bg-slate-900 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                    >
+                      Use Now
+                    </button>
                   </div>
                 </motion.div>
               ))}

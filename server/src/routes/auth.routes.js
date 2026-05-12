@@ -20,6 +20,7 @@ router.post('/register', validate(Joi.object({
 router.post('/login', login);
 router.post('/refresh', refresh);
 router.post('/logout', authenticate, logout);
+router.get('/me', authenticate, (req, res) => res.json(req.user));
 
 export default router;
 

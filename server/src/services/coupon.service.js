@@ -3,6 +3,7 @@ import { Coupon } from '../models/Coupon.js';
 import { CouponRedemption } from '../models/CouponRedemption.js';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.js';
 import { AppError } from '../utils/AppError.js';
+import { User } from '../models/User.js';
 import { scoreRedemption, logFraud } from './fraud.service.js';
 
 export async function createCoupon(payload, user) {
@@ -20,7 +21,33 @@ export async function listCoupons(query, user) {
   if (query.status) filter.status = query.status;
   if (query.type) filter.type = query.type;
   if (query.search) filter.$text = { $search: query.search };
+
+  // If user is a customer, apply prerequisite filtering
+  if (user.role === 'customer') {
+    const stats = await getUserStats(user);
+    filter.$and = filter.$and || [];
+    filter.$and.push({
+      $or: [
+        { 'conditions.prerequisites': { $exists: false } },
+        {
+          $and: [
+            { $or: [{ 'conditions.prerequisites.minLoyaltyPoints': { $exists: false } }, { 'conditions.prerequisites.minLoyaltyPoints': { $lte: user.loyaltyPoints || 0 } }] },
+            { $or: [{ 'conditions.prerequisites.minPastRedemptions': { $exists: false } }, { 'conditions.prerequisites.minPastRedemptions': { $lte: stats.pastRedemptions } }] },
+            { $or: [{ 'conditions.prerequisites.accountAgeDays': { $exists: false } }, { 'conditions.prerequisites.accountAgeDays': { $lte: stats.accountAgeDays } }] }
+          ]
+        }
+      ]
+    });
+    // If no explicit $and were added before, we can simplify, but this is robust.
+  }
+
   return Coupon.find(filter).sort({ createdAt: -1 }).limit(100);
+}
+
+async function getUserStats(user) {
+  const accountAgeDays = Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+  const pastRedemptions = await CouponRedemption.countDocuments({ userId: user._id, status: 'redeemed' });
+  return { accountAgeDays, pastRedemptions };
 }
 export async function getMyCoupons(user) {
   return CouponRedemption.find({ userId: user._id })
@@ -31,7 +58,9 @@ export async function getMyCoupons(user) {
 export async function claimCoupon(couponId, user, metadata) {
   const coupon = await Coupon.findById(couponId);
   if (!coupon) throw new AppError('Coupon not found', 404);
-  validateCouponWindow(coupon);
+
+  const stats = await getUserStats(user);
+  validateCouponEligibility(coupon, user, stats);
 
   const fraud = await scoreRedemption({ user, coupon, ...metadata });
   if (fraud.riskScore >= 85) {
@@ -73,12 +102,16 @@ export async function claimCoupon(couponId, user, metadata) {
 export async function redeemCoupon(couponId, user, metadata) {
   const coupon = await Coupon.findById(couponId);
   if (!coupon) throw new AppError('Coupon not found', 404);
-  validateCouponWindow(coupon);
+  
+  const stats = await getUserStats(user);
+  validateCouponEligibility(coupon, user, stats);
 
   const redemption = await CouponRedemption.findOne({ couponId, userId: user._id, status: 'claimed' });
   if (!redemption) throw new AppError('Claim coupon before redemption', 400);
 
   const discountApplied = calculateDiscount(coupon, metadata.cartValue);
+  const pointsEarned = Math.floor(metadata.cartValue / 10); // 1 point per $10 spent
+
   redemption.status = 'redeemed';
   redemption.redeemedAt = new Date();
   redemption.orderId = metadata.orderId;
@@ -87,6 +120,7 @@ export async function redeemCoupon(couponId, user, metadata) {
 
   await Promise.all([
     Coupon.updateOne({ _id: coupon._id }, { $inc: { 'counters.redeemed': 1 } }),
+    User.updateOne({ _id: user._id }, { $inc: { loyaltyPoints: pointsEarned } }),
     AnalyticsEvent.create({
       organizationId: coupon.organizationId,
       userId: user._id,
@@ -100,11 +134,26 @@ export async function redeemCoupon(couponId, user, metadata) {
   return { redemption, discountApplied };
 }
 
-function validateCouponWindow(coupon) {
+function validateCouponEligibility(coupon, user, stats) {
   const now = new Date();
   if (coupon.status !== 'active') throw new AppError('Coupon is not active', 400);
   if (coupon.startsAt > now || coupon.expiresAt < now) throw new AppError('Coupon is outside its valid window', 400);
-  if (coupon.counters.claimed >= coupon.conditions.usageLimit) throw new AppError('Coupon usage limit reached', 409);
+  if (coupon.counters.claimed >= (coupon.conditions.usageLimit || 1000)) throw new AppError('Coupon usage limit reached', 409);
+
+  // Check prerequisites
+  if (coupon.conditions.prerequisites) {
+    const { minLoyaltyPoints, minPastRedemptions, accountAgeDays } = coupon.conditions.prerequisites;
+    
+    if (minLoyaltyPoints && user.loyaltyPoints < minLoyaltyPoints) {
+      throw new AppError(`Ineligible: Requires ${minLoyaltyPoints} loyalty points.`, 403);
+    }
+    if (minPastRedemptions && stats.pastRedemptions < minPastRedemptions) {
+      throw new AppError(`Ineligible: Requires ${minPastRedemptions} previous successful redemptions.`, 403);
+    }
+    if (accountAgeDays && stats.accountAgeDays < accountAgeDays) {
+      throw new AppError(`Ineligible: Account must be at least ${accountAgeDays} days old.`, 403);
+    }
+  }
 }
 
 function calculateDiscount(coupon, cartValue) {

@@ -13,6 +13,11 @@ const conditionSchema = new mongoose.Schema({
   timeWindow: {
     startHour: Number,
     endHour: Number
+  },
+  prerequisites: {
+    minLoyaltyPoints: { type: Number, default: 0 },
+    minPastRedemptions: { type: Number, default: 0 },
+    accountAgeDays: { type: Number, default: 0 }
   }
 }, { _id: false });
 

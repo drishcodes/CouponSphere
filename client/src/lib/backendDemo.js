@@ -98,7 +98,12 @@ export async function generateBackendCoupon(formData = {}) {
       usageLimit: formData.usageLimit || 500,
       perUserLimit: 1,
       regions: ['IN-WB', 'IN-KA'],
-      categories: ['food', 'premium']
+      categories: ['food', 'premium'],
+      prerequisites: {
+        minLoyaltyPoints: Number(formData.minLoyaltyPoints) || 0,
+        minPastRedemptions: Number(formData.minPastRedemptions) || 0,
+        accountAgeDays: Number(formData.accountAgeDays) || 0
+      }
     },
     ai: {
       segment: 'high_intent',
@@ -198,4 +203,17 @@ export async function exportAdminReport() {
   a.click();
   window.URL.revokeObjectURL(url);
   document.body.removeChild(a);
+}
+
+export async function fetchMe() {
+  const { data } = await api.get('/auth/me');
+  return data;
+}
+
+export async function redeemBackendCoupon(couponId) {
+  const { data } = await api.post(`/coupons/${couponId}/redeem`, {
+    cartValue: 500,
+    orderId: `ORD-${Math.floor(Math.random() * 100000)}`
+  });
+  return data;
 }
